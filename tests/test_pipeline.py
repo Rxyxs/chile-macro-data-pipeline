@@ -134,3 +134,19 @@ def test_export_writes_column_arrays(built, tmp_path):
     mercados = json.loads((tmp_path / "mercados.json").read_text(encoding="utf-8"))
     assert set(mercados) >= {"fecha", "uf", "dolar", "cobre_uf_lb"}
     assert len(mercados["fecha"]) == len(mercados["uf"])
+
+
+def test_fallback_used_when_primary_host_is_down(tmp_path, monkeypatch):
+    from pipeline import bcentral
+    monkeypatch.setattr(bcentral, "credentials", lambda: ("u", "p"))
+    frame = pd.DataFrame({"fecha": pd.to_datetime(["2024-01-01"]), "valor": [37000.0]})
+    src = extract.Source("uf", lambda: None, ("fecha",), "valor", ("down",), lambda: frame)
+    log = extract.run([src], raw=tmp_path)
+    assert log[["estado", "origen"]].iloc[0].tolist() == ["ok", "respaldo"]
+
+
+def test_no_fallback_without_credentials(tmp_path, monkeypatch):
+    from pipeline import bcentral
+    monkeypatch.setattr(bcentral, "credentials", lambda: None)
+    src = extract.Source("uf", lambda: None, ("fecha",), "valor", ("down",), lambda: 1 / 0)
+    assert extract.run([src], raw=tmp_path)["estado"].iloc[0] == "fallo"

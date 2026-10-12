@@ -55,8 +55,12 @@ jobs:
             [ -f warehouse/raw/$f.parquet ] || curl -fsSL -o warehouse/raw/$f.parquet "$SITE_URL/data/$f.parquet" || rm -f warehouse/raw/$f.parquet
           done
 
+      # The Central Bank fallback is only active when these secrets exist.
       - name: Extract
         run: python -m pipeline.extract
+        env:
+          BCCH_USER: ${{ secrets.BCCH_USER }}
+          BCCH_PASS: ${{ secrets.BCCH_PASS }}
 
       # Saved even when a later step fails: years downloaded from a flaky source are kept,
       # so the next run resumes instead of starting over.

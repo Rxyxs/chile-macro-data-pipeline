@@ -41,6 +41,7 @@ class Source:
     key: tuple[str, ...]
     value: str
     hosts: tuple[str, ...]
+    fallback: Callable[[], pd.DataFrame] | None = None
 
 
 HOSTS = {
@@ -102,14 +103,21 @@ def _delinquency() -> pd.DataFrame:
     return df[["fecha", *dc.cmf.CARTERAS, "monto_moroso_mm"]].reset_index(drop=True)
 
 
+def _bde(name: str) -> Callable[[], pd.DataFrame]:
+    def fetch() -> pd.DataFrame:
+        from pipeline import bcentral
+        return bcentral.serie(name, START_YEAR)
+    return fetch
+
+
 SOURCES = [
-    Source("uf", _uf, ("fecha",), "valor", ("mindicador",)),
-    Source("dolar", _indicator("dolar"), ("fecha",), "valor", ("mindicador",)),
-    Source("cobre", _indicator("libra_cobre"), ("fecha",), "valor", ("mindicador",)),
-    Source("ipc", _indicator("ipc"), ("fecha",), "valor", ("mindicador",)),
-    Source("tpm", _indicator("tpm"), ("fecha",), "valor", ("mindicador",)),
-    Source("imacec", _indicator("imacec"), ("fecha",), "valor", ("mindicador",)),
-    Source("desempleo", _indicator("tasa_desempleo"), ("fecha",), "valor", ("mindicador",)),
+    Source("uf", _uf, ("fecha",), "valor", ("mindicador",), _bde("uf")),
+    Source("dolar", _indicator("dolar"), ("fecha",), "valor", ("mindicador",), _bde("dolar")),
+    Source("cobre", _indicator("libra_cobre"), ("fecha",), "valor", ("mindicador",), _bde("cobre")),
+    Source("ipc", _indicator("ipc"), ("fecha",), "valor", ("mindicador",), _bde("ipc")),
+    Source("tpm", _indicator("tpm"), ("fecha",), "valor", ("mindicador",), _bde("tpm")),
+    Source("imacec", _indicator("imacec"), ("fecha",), "valor", ("mindicador",), _bde("imacec")),
+    Source("desempleo", _indicator("tasa_desempleo"), ("fecha",), "valor", ("mindicador",), _bde("desempleo")),
     Source("fondos", _pension_index, ("fecha", "fondo"), "indice", ("spensiones", "mindicador")),
     Source("morosidad", _delinquency, ("fecha",), "total", ("cmf",)),
 ]
@@ -150,9 +158,17 @@ def run(sources=SOURCES, raw: Path = RAW) -> pd.DataFrame:
         entry = {"fuente": s.name, "cargado_en": loaded_at}
         try:
             dead = [f"{h}: {down[h]}" for h in s.hosts if down.get(h)]
-            if dead:
-                raise ConnectionError("host no responde, " + "; ".join(dead))
-            new = fetch_with_retries(s)
+            entry["origen"] = "principal"
+            try:
+                if dead:
+                    raise ConnectionError("host no responde, " + "; ".join(dead))
+                new = fetch_with_retries(s)
+            except ConnectionError:
+                from pipeline import bcentral
+                if s.fallback is None or bcentral.credentials() is None:
+                    raise
+                new = s.fallback()
+                entry["origen"] = "respaldo"
             missing = set(s.key) | {s.value}
             missing -= set(new.columns)
             if missing:
