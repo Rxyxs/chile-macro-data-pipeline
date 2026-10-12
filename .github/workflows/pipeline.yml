@@ -38,7 +38,7 @@ jobs:
       # Closed years and months never change: keep datoschile's download cache and the
       # previous raw layer between runs, so a normal day only fetches the open period and
       # revisions are measured against yesterday's extract.
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         with:
           path: |
             .cache/datoschile
@@ -57,6 +57,16 @@ jobs:
 
       - name: Extract
         run: python -m pipeline.extract
+
+      # Saved even when a later step fails: years downloaded from a flaky source are kept,
+      # so the next run resumes instead of starting over.
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: |
+            .cache/datoschile
+            warehouse/raw
+          key: state-${{ github.run_id }}
 
       - name: Transform and test (dbt)
         working-directory: transform

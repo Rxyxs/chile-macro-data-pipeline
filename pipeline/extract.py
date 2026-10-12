@@ -17,6 +17,7 @@ Three things the daily run has to survive, all seen on the real sources:
 from __future__ import annotations
 
 import sys
+import time
 import traceback
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -30,6 +31,7 @@ import requests
 ROOT = Path(__file__).resolve().parents[1]
 RAW = ROOT / "warehouse" / "raw"
 START_YEAR = 2010
+FETCH_TRIES = 3
 
 
 @dataclass(frozen=True)
@@ -48,13 +50,33 @@ HOSTS = {
 }
 
 
-def probe(url: str, timeout: int = 45) -> str | None:
-    """None if the host answers, else the reason it did not."""
-    try:
-        requests.get(url, timeout=timeout, headers={"User-Agent": "chile-macro-data-pipeline"}).raise_for_status()
-        return None
-    except requests.RequestException as e:
-        return f"{type(e).__name__}: {e}"[:300]
+def probe(url: str, timeout: int = 60, tries: int = 3) -> str | None:
+    """None if the host answers within ``tries`` attempts, else the last reason it did not.
+    mindicador.cl fails intermittently (a dropped TLS handshake, then a 40 s answer), so
+    one failed request is not enough to call it down."""
+    reason = None
+    for i in range(tries):
+        try:
+            requests.get(url, timeout=timeout,
+                         headers={"User-Agent": "chile-macro-data-pipeline"}).raise_for_status()
+            return None
+        except requests.RequestException as e:
+            reason = f"{type(e).__name__}: {e}"[:300]
+            time.sleep(5 * (i + 1))
+    return reason
+
+
+def fetch_with_retries(source: "Source", tries: int | None = None) -> pd.DataFrame:
+    """Each closed year a failed attempt managed to download is already cached, so a retry
+    resumes where the last one stopped instead of starting over."""
+    tries = tries or FETCH_TRIES
+    for i in range(tries):
+        try:
+            return source.fetch()
+        except ConnectionError:
+            if i == tries - 1:
+                raise
+            time.sleep(20 * (i + 1))
 
 
 def _indicator(code: str) -> Callable[[], pd.DataFrame]:
@@ -130,7 +152,7 @@ def run(sources=SOURCES, raw: Path = RAW) -> pd.DataFrame:
             dead = [f"{h}: {down[h]}" for h in s.hosts if down.get(h)]
             if dead:
                 raise ConnectionError("host no responde, " + "; ".join(dead))
-            new = s.fetch()
+            new = fetch_with_retries(s)
             missing = set(s.key) | {s.value}
             missing -= set(new.columns)
             if missing:

@@ -26,6 +26,7 @@ def _src(name, frame_fn, key=("fecha",), value="valor", hosts=("h",)):
 def hosts_up(monkeypatch):
     monkeypatch.setattr(extract, "HOSTS", {"h": "x", "down": "y"})
     monkeypatch.setattr(extract, "probe", lambda url: None if url == "x" else "Timeout")
+    monkeypatch.setattr(extract, "FETCH_TRIES", 1)
 
 
 def test_failed_source_keeps_last_good_file_and_others_load(tmp_path):
