@@ -1,0 +1,8 @@
+datoschile @ git+https://github.com/Rxyxs/datoschile
+dbt-core~=1.12
+dbt-duckdb~=1.11
+duckdb~=1.5
+pandas>=2.2
+pyarrow
+requests
+pytest

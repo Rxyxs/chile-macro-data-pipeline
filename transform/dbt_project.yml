@@ -1,0 +1,16 @@
+name: chile_macro
+version: "1.0.0"
+profile: chile_macro
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+target-path: "../warehouse/dbt_target"
+log-path: "../warehouse/dbt_logs"
+clean-targets: ["../warehouse/dbt_target"]
+
+models:
+  chile_macro:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table

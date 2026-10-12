@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chile en datos</title>
+<meta name="description" content="Dashboard diario de la economía chilena: cobre, UF, dólar, inflación, tasa de política, fondos de pensiones en UF y morosidad bancaria, con el estado de cada fuente.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  color-scheme: light;
+  --surface-0: #f4f3f0; --surface-1: #fcfcfb; --border: #e3e1db;
+  --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #7a7973;
+  --grid: #e8e6e0;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4;
+  --good: #1a7f37; --warn: #9a6700; --bad: #cf222e;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface-0: #121211; --surface-1: #1a1a19; --border: #2e2e2c;
+    --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+    --grid: #2b2b29;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181;
+    --good: #3fb950; --warn: #d29922; --bad: #f85149;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-0: #121211; --surface-1: #1a1a19; --border: #2e2e2c;
+  --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+  --grid: #2b2b29;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181;
+  --good: #3fb950; --warn: #d29922; --bad: #f85149;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface-0); color: var(--text-primary);
+       font: 15px/1.5 Inter, system-ui, sans-serif; }
+main { max-width: 1120px; margin: 0 auto; padding: 28px 16px 64px; }
+header { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: baseline; }
+h1 { font-size: clamp(1.5rem, 4vw, 2rem); margin: 0; letter-spacing: -0.01em; }
+h2 { font-size: 1.05rem; margin: 0 0 2px; }
+.sub { color: var(--text-secondary); margin: 6px 0 20px; max-width: 70ch; }
+.controls { display: flex; gap: 8px; flex-wrap: wrap; }
+button { font: inherit; font-size: 13px; padding: 5px 11px; border-radius: 6px; cursor: pointer;
+         border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary); }
+button[aria-pressed="true"] { border-color: var(--text-primary); font-weight: 600; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 16px; align-items: center; }
+.row .label { color: var(--text-muted); font-size: 13px; margin-right: 4px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 16px; }
+.card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 16px; min-width: 0; }
+.card.wide { grid-column: 1 / -1; }
+.note { color: var(--text-secondary); font-size: 13px; margin: 0 0 10px; }
+.chart { position: relative; height: 240px; }
+.wide .chart { height: 280px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.tile .k { color: var(--text-muted); font-size: 12px; }
+.tile .v { font-size: 1.45rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tile .d { color: var(--text-secondary); font-size: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th { color: var(--text-muted); font-weight: 500; }
+.tablewrap { overflow-x: auto; }
+.st { font-weight: 600; }
+.st.ok { color: var(--good); } .st.stale { color: var(--warn); } .st.fail { color: var(--bad); }
+footer { color: var(--text-muted); font-size: 13px; margin-top: 28px; }
+a { color: var(--s1); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 data-i18n="title">Chile en datos</h1>
+    <div class="controls">
+      <button id="lang-es" aria-pressed="true">ES</button>
+      <button id="lang-en" aria-pressed="false">EN</button>
+      <button id="theme" aria-label="tema">◐</button>
+    </div>
+  </header>
+  <p class="sub" data-i18n="sub">Se actualiza solo todos los días: GitHub Actions descarga las fuentes públicas, dbt las modela y prueba en DuckDB, y esta página lee el resultado. Si una fuente falla, se muestra con su último dato bueno y marcada.</p>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="row"><span class="label" data-i18n="range">Período</span>
+    <button data-range="1" aria-pressed="false">1A</button>
+    <button data-range="3" aria-pressed="false">3A</button>
+    <button data-range="5" aria-pressed="true">5A</button>
+    <button data-range="0" aria-pressed="false" data-i18n="all">Todo</button>
+  </div>
+
+  <div class="grid">
+    <section class="card">
+      <h2 data-i18n="cu_usd">Cobre, USD por libra</h2>
+      <p class="note" data-i18n="cu_usd_n">Precio de la libra en la Bolsa de Metales de Londres.</p>
+      <div class="chart"><canvas id="c-cu-usd"></canvas></div>
+    </section>
+    <section class="card">
+      <h2 data-i18n="cu_uf">Cobre, UF por libra</h2>
+      <p class="note" data-i18n="cu_uf_n">El mismo precio pasado a pesos con el dólar del día y deflactado por la UF: lo que vale para Chile en poder adquisitivo constante.</p>
+      <div class="chart"><canvas id="c-cu-uf"></canvas></div>
+    </section>
+    <section class="card wide">
+      <h2 data-i18n="rates">Inflación a 12 meses y tasa de política monetaria, %</h2>
+      <p class="note" data-i18n="rates_n">La inflación se compone desde las variaciones mensuales del IPC. Cuando la TPM está bajo la línea de inflación, la tasa real ex post es negativa.</p>
+      <div class="chart"><canvas id="c-rates"></canvas></div>
+    </section>
+    <section class="card">
+      <h2 data-i18n="imacec">IMACEC, variación a 12 meses, %</h2>
+      <p class="note" data-i18n="imacec_n">Actividad económica mensual respecto del mismo mes del año anterior.</p>
+      <div class="chart"><canvas id="c-imacec"></canvas></div>
+    </section>
+    <section class="card">
+      <h2 data-i18n="unemp">Desempleo, %</h2>
+      <p class="note" data-i18n="unemp_n">Tasa de desocupación nacional, trimestre móvil.</p>
+      <div class="chart"><canvas id="c-unemp"></canvas></div>
+    </section>
+    <section class="card wide">
+      <h2 data-i18n="funds">Fondos de pensiones A a E, índice real en UF</h2>
+      <p class="note" data-i18n="funds_n">Todas las AFP ponderadas por patrimonio, deflactado por la UF, base 100 al inicio del período mostrado.</p>
+      <div class="chart"><canvas id="c-funds"></canvas></div>
+    </section>
+    <section class="card wide">
+      <h2 data-i18n="mora">Morosidad bancaria de 90 días o más, % de la cartera</h2>
+      <p class="note" data-i18n="mora_n">Sistema bancario, por tipo de cartera (CMF). Julio de 2023 queda vacío: la CMF publicó esa fila sin dato.</p>
+      <div class="chart"><canvas id="c-mora"></canvas></div>
+    </section>
+    <section class="card wide">
+      <h2 data-i18n="health">Estado de las fuentes</h2>
+      <p class="note" data-i18n="health_n">Última ejecución, último dato disponible y cuántos valores pasados ha corregido cada fuente desde que el pipeline la vigila.</p>
+      <div class="tablewrap"><table id="t-health"></table></div>
+    </section>
+    <section class="card wide">
+      <h2 data-i18n="revs">Revisiones detectadas</h2>
+      <p class="note" data-i18n="revs_n">Valores que una fuente cambió respecto de la descarga anterior.</p>
+      <div class="tablewrap"><table id="t-revs"></table></div>
+    </section>
+  </div>
+  <footer>
+    <span data-i18n="foot">Fuentes: mindicador.cl (Banco Central, INE), Superintendencia de Pensiones y CMF, vía</span>
+    <a href="https://github.com/Rxyxs/datoschile">datoschile</a> ·
+    <a href="https://github.com/Rxyxs/chile-macro-data-pipeline" data-i18n="code">código</a> ·
+    <span id="generated"></span>
+  </footer>
+</main>
+<script>
+const I18N = {
+  en: {
+    title: "Chile in data",
+    sub: "Updates itself every day: GitHub Actions downloads the public sources, dbt models and tests them in DuckDB, and this page reads the result. If a source fails, it is shown with its last good value and flagged.",
+    range: "Period", all: "All",
+    cu_usd: "Copper, USD per pound", cu_usd_n: "Price per pound on the London Metal Exchange.",
+    cu_uf: "Copper, UF per pound", cu_uf_n: "The same price converted to pesos at the day's dollar and deflated by the UF: what it is worth to Chile in constant purchasing power.",
+    rates: "12-month inflation and monetary policy rate, %", rates_n: "Inflation is compounded from the monthly CPI changes. When the policy rate is below the inflation line, the ex-post real rate is negative.",
+    imacec: "IMACEC, 12-month change, %", imacec_n: "Monthly economic activity against the same month a year earlier.",
+    unemp: "Unemployment, %", unemp_n: "National unemployment rate, rolling quarter.",
+    funds: "Pension funds A to E, real index in UF", funds_n: "All pension administrators weighted by assets, deflated by the UF, 100 at the start of the period shown.",
+    mora: "Bank delinquency of 90 days or more, % of loans", mora_n: "Banking system by portfolio (CMF). July 2023 is empty: the CMF published that row without a value.",
+    health: "Source health", health_n: "Latest run, latest data point and how many past values each source has revised since the pipeline started watching it.",
+    revs: "Detected revisions", revs_n: "Values a source changed relative to the previous download.",
+    foot: "Sources: mindicador.cl (Central Bank, INE), Pension Superintendency and CMF, via", code: "code",
+    h_src: "Source", h_state: "State", h_run: "Latest run", h_data: "Latest data", h_age: "Age (days)", h_rows: "Rows", h_rev: "Revisions",
+    r_key: "Key", r_before: "Before", r_now: "Now", r_when: "Detected",
+    ok: "✓ ok", stale: "▲ stale", fail: "✕ failed", none_rev: "No revisions detected yet.",
+    t_cu: "Copper", t_uf: "UF", t_usd: "Dollar", t_ipc: "CPI 12m", t_tpm: "Policy rate", t_mora: "Delinquency 90+",
+    gen: "data generated", total: "total", consumo: "consumer", vivienda: "mortgage", comercial: "commercial",
+    ipc12: "CPI 12m", tpm: "policy rate", fund: "Fund"
+  },
+  es: {
+    h_src: "Fuente", h_state: "Estado", h_run: "Última ejecución", h_data: "Último dato", h_age: "Antigüedad (días)", h_rows: "Filas", h_rev: "Revisiones",
+    r_key: "Clave", r_before: "Antes", r_now: "Ahora", r_when: "Detectado",
+    ok: "✓ al día", stale: "▲ desactualizada", fail: "✕ falló", none_rev: "Aún no se detectan revisiones.",
+    t_cu: "Cobre", t_uf: "UF", t_usd: "Dólar", t_ipc: "IPC 12m", t_tpm: "TPM", t_mora: "Morosidad 90+",
+    gen: "datos generados", total: "total", consumo: "consumo", vivienda: "vivienda", comercial: "comercial",
+    ipc12: "IPC 12m", tpm: "TPM", fund: "Fondo"
+  }
+};
+const ES_TEXT = {};
+document.querySelectorAll("[data-i18n]").forEach(el => ES_TEXT[el.dataset.i18n] = el.textContent);
+let lang = "es", years = 5, D = {}, charts = [];
+const t = k => (lang === "en" ? I18N.en[k] : (ES_TEXT[k] ?? I18N.es[k])) ?? k;
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmt = (x, d = 2) => x == null ? "–" : x.toLocaleString(lang === "es" ? "es-CL" : "en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+
+function cut(dates) {
+  if (!years || !dates.length) return 0;
+  const last = new Date(dates[dates.length - 1]);
+  const from = new Date(last); from.setFullYear(last.getFullYear() - years);
+  const iso = from.toISOString().slice(0, 10);
+  const i = dates.findIndex(d => d >= iso);
+  return i < 0 ? 0 : i;
+}
+
+function lineChart(id, labels, series, unit, digits = 2) {
+  const el = document.getElementById(id);
+  const c = new Chart(el, {
+    type: "line",
+    data: { labels, datasets: series.map(s => ({
+      label: s.label, data: s.data, borderColor: s.color, backgroundColor: s.color,
+      borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, pointHoverBorderWidth: 2,
+      pointHoverBorderColor: css("--surface-1"), spanGaps: false, tension: 0 })) },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: series.length > 1, position: "top", align: "start",
+                  labels: { color: css("--text-secondary"), boxWidth: 12, boxHeight: 2, font: { family: "Inter", size: 12 } } },
+        tooltip: { backgroundColor: css("--surface-1"), titleColor: css("--text-primary"), bodyColor: css("--text-secondary"),
+                   borderColor: css("--border"), borderWidth: 1, padding: 10, boxWidth: 8, boxHeight: 8,
+                   callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fmt(ctx.parsed.y, digits)}${unit}` } }
+      },
+      scales: {
+        x: { type: "category", grid: { display: false }, border: { color: css("--border") },
+             ticks: { color: css("--text-muted"), maxTicksLimit: 7, maxRotation: 0, autoSkip: true,
+                      callback(v) { return this.getLabelForValue(v).slice(0, 7); } } },
+        y: { grid: { color: css("--grid") }, border: { display: false },
+             ticks: { color: css("--text-muted"), callback: v => fmt(v, digits > 1 ? 1 : digits) } }
+      }
+    }
+  });
+  charts.push(c);
+}
+
+function drawAll() {
+  charts.forEach(c => c.destroy()); charts = [];
+  const m = D.mercados, i0 = cut(m.fecha);
+  const sl = a => a.slice(i0);
+  lineChart("c-cu-usd", sl(m.fecha), [{ label: t("t_cu"), data: sl(m.cobre_usd_lb), color: css("--s1") }], " USD");
+  lineChart("c-cu-uf", sl(m.fecha), [{ label: t("t_cu"), data: sl(m.cobre_uf_lb), color: css("--s1") }], " UF", 3);
+
+  const ma = D.macro, j0 = cut(ma.mes), sm = a => a.slice(j0);
+  lineChart("c-rates", sm(ma.mes), [
+    { label: t("ipc12"), data: sm(ma.ipc_12m), color: css("--s1") },
+    { label: t("tpm"), data: sm(ma.tpm), color: css("--s2") }], "%");
+  lineChart("c-imacec", sm(ma.mes), [{ label: "IMACEC", data: sm(ma.imacec_12m), color: css("--s1") }], "%", 1);
+  lineChart("c-unemp", sm(ma.mes), [{ label: t("unemp"), data: sm(ma.desempleo), color: css("--s1") }], "%", 1);
+
+  const f = D.fondos, funds = ["A", "B", "C", "D", "E"];
+  const byFund = Object.fromEntries(funds.map(k => [k, new Map()]));
+  f.fecha.forEach((d, i) => byFund[f.fondo[i]].set(d, f.indice_real[i]));
+  const dates = [...byFund.C.keys()].sort(), k0 = cut(dates), shown = dates.slice(k0);
+  lineChart("c-funds", shown, funds.map((k, n) => {
+    const base = byFund[k].get(shown[0]);
+    return { label: `${t("fund")} ${k}`, data: shown.map(d => byFund[k].has(d) ? 100 * byFund[k].get(d) / base : null),
+             color: css(`--s${n + 1}`) };
+  }), "", 1);
+
+  const mo = D.morosidad, l0 = cut(mo.mes), so = a => a.slice(l0);
+  lineChart("c-mora", so(mo.mes), ["total", "consumo", "vivienda", "comercial"].map((k, n) =>
+    ({ label: t(k), data: so(mo[k]), color: css(`--s${n + 1}`) })), "%");
+}
+
+function tiles() {
+  const last = (arr, vals) => { for (let i = vals.length - 1; i >= 0; i--) if (vals[i] != null) return [arr[i], vals[i]]; return [null, null]; };
+  const m = D.mercados, ma = D.macro, mo = D.morosidad;
+  const items = [
+    ["t_cu", ...last(m.fecha, m.cobre_usd_lb), " USD/lb", 2],
+    ["t_usd", ...last(m.fecha, m.dolar), " CLP", 1],
+    ["t_uf", ...last(m.fecha, m.uf), " CLP", 0],
+    ["t_ipc", ...last(ma.mes, ma.ipc_12m), "%", 1],
+    ["t_tpm", ...last(ma.mes, ma.tpm), "%", 2],
+    ["t_mora", ...last(mo.mes, mo.total), "%", 2]];
+  document.getElementById("tiles").innerHTML = items.map(([k, d, v, u, dg]) =>
+    `<div class="tile"><div class="k">${t(k)}</div><div class="v">${fmt(v, dg)}${u.startsWith("%") ? "%" : ""}</div>
+     <div class="d">${u.startsWith("%") ? "" : u.trim() + " · "}${d ? d.slice(0, d.length > 7 && k !== "t_ipc" && k !== "t_tpm" && k !== "t_mora" ? 10 : 7) : ""}</div></div>`).join("");
+}
+
+function tables() {
+  const h = D.salud;
+  const state = i => {
+    if (h.estado_ultima_ejecucion[i] !== "ok") return `<span class="st fail">${t("fail")}</span>`;
+    if (h.desactualizada[i]) return `<span class="st stale">${t("stale")}</span>`;
+    return `<span class="st ok">${t("ok")}</span>`;
+  };
+  let rows = `<tr><th>${t("h_src")}</th><th>${t("h_state")}</th><th>${t("h_run")}</th><th>${t("h_data")}</th><th>${t("h_age")}</th><th>${t("h_rows")}</th><th>${t("h_rev")}</th></tr>`;
+  h.fuente.forEach((s, i) => {
+    rows += `<tr><td>${s}</td><td>${state(i)}${h.error[i] ? ` <span title="${h.error[i].replace(/"/g, "'")}">ⓘ</span>` : ""}</td>
+      <td>${(h.ultima_ejecucion[i] || "").replace("T", " ").slice(0, 16)}</td><td>${h.ultimo_dato[i] || "–"}</td>
+      <td>${h.dias_desde_ultimo_dato[i] ?? "–"}</td><td>${h.filas[i] != null ? h.filas[i].toLocaleString() : "–"}</td><td>${h.revisiones_totales[i]}</td></tr>`;
+  });
+  document.getElementById("t-health").innerHTML = rows;
+  const r = D.revisiones;
+  document.getElementById("t-revs").innerHTML = !r.fuente.length ? `<tr><td>${t("none_rev")}</td></tr>` :
+    `<tr><th>${t("h_src")}</th><th>${t("r_key")}</th><th>${t("r_before")}</th><th>${t("r_now")}</th><th>${t("r_when")}</th></tr>` +
+    r.fuente.slice(0, 50).map((s, i) => `<tr><td>${s}</td><td>${r.clave[i].slice(0, 10)}</td><td>${fmt(r.antes[i], 3)}</td><td>${fmt(r.ahora[i], 3)}</td><td>${r.detectado_en[i].slice(0, 10)}</td></tr>`).join("");
+}
+
+function render() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll("[data-i18n]").forEach(el => el.textContent = t(el.dataset.i18n));
+  document.getElementById("generated").textContent = `${t("gen")} ${D.meta.generado_en.replace("T", " ").slice(0, 16)} UTC`;
+  tiles(); tables(); drawAll();
+}
+
+function setLang(l) {
+  lang = l;
+  document.getElementById("lang-es").setAttribute("aria-pressed", l === "es");
+  document.getElementById("lang-en").setAttribute("aria-pressed", l === "en");
+  try { localStorage.setItem("lang", l); } catch (e) {}
+  render();
+}
+document.getElementById("lang-es").onclick = () => setLang("es");
+document.getElementById("lang-en").onclick = () => setLang("en");
+document.getElementById("theme").onclick = () => {
+  const dark = document.documentElement.dataset.theme
+    ? document.documentElement.dataset.theme === "dark"
+    : matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.dataset.theme = dark ? "light" : "dark";
+  try { localStorage.setItem("theme", document.documentElement.dataset.theme); } catch (e) {}
+  drawAll();
+};
+document.querySelectorAll("[data-range]").forEach(b => b.onclick = () => {
+  years = +b.dataset.range;
+  document.querySelectorAll("[data-range]").forEach(x => x.setAttribute("aria-pressed", x === b));
+  drawAll();
+});
+
+(async () => {
+  try { const th = localStorage.getItem("theme"); if (th) document.documentElement.dataset.theme = th;
+        const l = localStorage.getItem("lang"); if (l) lang = l; } catch (e) {}
+  const names = ["mercados", "macro", "fondos", "morosidad", "salud", "revisiones", "meta"];
+  const got = await Promise.all(names.map(n => fetch(`data/${n}.json`).then(r => r.json())));
+  names.forEach((n, i) => D[n] = got[i]);
+  document.getElementById("lang-es").setAttribute("aria-pressed", lang === "es");
+  document.getElementById("lang-en").setAttribute("aria-pressed", lang === "en");
+  render();
+})();
+</script>
+</body>
+</html>

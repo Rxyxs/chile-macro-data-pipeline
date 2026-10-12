@@ -1,0 +1,78 @@
+name: pipeline
+
+# Every day at 13:30 UTC (10:30 in Santiago), after the Central Bank publishes the day's
+# dollar and UF. Can also be started by hand.
+on:
+  schedule:
+    - cron: "30 13 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pipeline
+  cancel-in-progress: false
+
+env:
+  DATOSCHILE_CACHE: ${{ github.workspace }}/.cache/datoschile
+  SITE_URL: https://rxyxs.github.io/chile-macro-data-pipeline
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      # Closed years and months never change: keep datoschile's download cache and the
+      # previous raw layer between runs, so a normal day only fetches the open period and
+      # revisions are measured against yesterday's extract.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .cache/datoschile
+            warehouse/raw
+          key: state-${{ github.run_id }}
+          restore-keys: state-
+
+      # If the cache was evicted, recover the load and revision history from the live
+      # site, where every run publishes it, instead of starting the log from zero.
+      - name: Restore history from the published site
+        run: |
+          mkdir -p warehouse/raw
+          for f in _loads _revisions; do
+            [ -f warehouse/raw/$f.parquet ] || curl -fsSL -o warehouse/raw/$f.parquet "$SITE_URL/data/$f.parquet" || rm -f warehouse/raw/$f.parquet
+          done
+
+      - name: Extract
+        run: python -m pipeline.extract
+
+      - name: Transform and test (dbt)
+        working-directory: transform
+        run: dbt build --profiles-dir .
+
+      - name: Source freshness (reported, not blocking)
+        working-directory: transform
+        run: dbt source freshness --profiles-dir . || true
+
+      - name: Export marts for the dashboard
+        run: |
+          python -m pipeline.export
+          cp warehouse/raw/_loads.parquet warehouse/raw/_revisions.parquet site/data/
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4

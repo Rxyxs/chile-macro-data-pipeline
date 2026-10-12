@@ -1,0 +1,30 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Parquet files written by pipeline/extract.py, one per source.
+    meta:
+      external_location: "{{ env_var('RAW_PATH', '../warehouse/raw') }}/{name}.parquet"
+    loaded_at_field: _cargado_en
+    freshness:
+      warn_after: {count: 36, period: hour}
+      error_after: {count: 96, period: hour}
+    tables:
+      - name: uf
+      - name: dolar
+      - name: cobre
+      - name: ipc
+        freshness: null
+      - name: tpm
+        freshness: null
+      - name: imacec
+        freshness: null
+      - name: desempleo
+        freshness: null
+      - name: fondos
+      - name: morosidad
+        freshness: null
+      - name: _loads
+        loaded_at_field: cargado_en
+      - name: _revisions
+        freshness: null

@@ -1,0 +1,39 @@
+version: 2
+
+models:
+  - name: mart_mercados_diario
+    description: UF, dollar and copper per trading day, copper also in CLP and UF per pound.
+    columns:
+      - name: fecha
+        tests: [unique, not_null]
+      - name: uf
+        tests: [not_null]
+      - name: dolar
+        tests: [not_null]
+  - name: mart_macro_mensual
+    description: CPI (monthly and 12-month), policy rate, ex-post real rate, IMACEC and unemployment.
+    columns:
+      - name: mes
+        tests: [unique, not_null]
+  - name: mart_fondos
+    description: Real index, 12-month real return and drawdown of pension funds A to E.
+    tests:
+      - dbt_utils_unique_combination:
+          columns: [fecha, fondo]
+    columns:
+      - name: fondo
+        tests:
+          - accepted_values:
+              values: [A, B, C, D, E]
+      - name: indice_real
+        tests: [not_null]
+  - name: mart_morosidad
+    description: Banking-system 90-day delinquency (% of loans) per month and portfolio.
+    columns:
+      - name: mes
+        tests: [unique, not_null]
+  - name: mart_salud_fuentes
+    description: Latest run, latest good load, data age and revision count per source.
+    columns:
+      - name: fuente
+        tests: [unique, not_null]
