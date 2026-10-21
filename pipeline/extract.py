@@ -134,7 +134,8 @@ SOURCES = [
     Source("tpm", _indicator("tpm"), ("fecha",), "valor", ("mindicador",), _bde("tpm")),
     Source("imacec", _indicator("imacec"), ("fecha",), "valor", ("mindicador",), _bde("imacec")),
     Source("desempleo", _indicator("tasa_desempleo"), ("fecha",), "valor", ("mindicador",), _bde("desempleo")),
-    Source("fondos", _pension_index, ("fecha", "fondo"), "indice", ("spensiones", "mindicador")),
+    # The real index needs the UF, which datoschile takes from the SII if mindicador is down.
+    Source("fondos", _pension_index, ("fecha", "fondo"), "indice", ("spensiones",)),
     Source("morosidad", _delinquency, ("fecha",), "total", ("cmf",)),
 ]
 
@@ -168,7 +169,12 @@ def run(sources=SOURCES, raw: Path = RAW) -> pd.DataFrame:
                       "ahora": pd.Series(dtype=float), "fuente": pd.Series(dtype=str),
                       "detectado_en": pd.Series(dtype="datetime64[us, UTC]")}).to_parquet(rev_path, index=False)
     log = []
-    down = {h: probe(HOSTS[h]) for h in sorted({h for s in sources for h in s.hosts})}
+    needed = {h for s in sources for h in s.hosts} | ({"sii"} if any(s.official for s in sources) else set())
+    down = {h: probe(HOSTS[h]) for h in sorted(needed) if h in HOSTS}
+    if down.get("mindicador"):
+        # datoschile then takes the UF it needs (e.g. for the real pension index) from the
+        # SII straight away instead of waiting out mindicador's timeout year after year.
+        dc.indicadores._mindicador_caido = True
     for s in sources:
         path = raw / f"{s.name}.parquet"
         entry = {"fuente": s.name, "cargado_en": loaded_at}
