@@ -148,7 +148,10 @@ def revisions(old: pd.DataFrame, new: pd.DataFrame, source: Source) -> pd.DataFr
     a, b = both[f"{source.value}_antes"], both[f"{source.value}_ahora"]
     changed = both[~((a == b) | (a.isna() & b.isna()) | ((a - b).abs() <= 1e-9 * b.abs()))]
     out = changed.rename(columns={f"{source.value}_antes": "antes", f"{source.value}_ahora": "ahora"})
-    out["clave"] = out[key].astype(str).agg("|".join, axis=1)
+    # With no changed rows and a multi-column key, agg(axis=1) returns an empty DataFrame
+    # instead of a Series, and assigning it to one column raises.
+    out["clave"] = (out[key].astype(str).agg("|".join, axis=1) if len(out)
+                    else pd.Series(dtype=str, index=out.index))
     return out[["clave", "antes", "ahora"]].assign(fuente=source.name)
 
 
