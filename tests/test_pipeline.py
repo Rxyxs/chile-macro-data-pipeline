@@ -176,3 +176,12 @@ def test_source_with_date_attrs_still_writes_parquet(tmp_path):
     log = extract.run([_src("dolar", lambda: frame)], raw=tmp_path)
     assert log["estado"].iloc[0] == "ok"
     assert pd.read_parquet(tmp_path / "dolar.parquet")["valor"].iloc[0] == 24627.10
+
+
+def test_reload_without_changes_on_a_two_column_key(tmp_path):
+    frame = pd.DataFrame({"fecha": pd.to_datetime(["2024-01-01", "2024-01-01"]),
+                          "fondo": ["A", "B"], "indice": [100.0, 101.0]})
+    src = _src("fondos", lambda: frame, key=("fecha", "fondo"), value="indice")
+    extract.run([src], raw=tmp_path)
+    log = extract.run([src], raw=tmp_path)
+    assert log[["estado", "revisiones"]].iloc[0].tolist() == ["ok", 0]
