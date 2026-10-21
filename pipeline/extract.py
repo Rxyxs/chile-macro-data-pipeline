@@ -42,12 +42,15 @@ class Source:
     value: str
     hosts: tuple[str, ...]
     fallback: Callable[[], pd.DataFrame] | None = None
+    # Official keyless source tried before the BDE fallback (which needs credentials).
+    official: Callable[[], pd.DataFrame] | None = None
 
 
 HOSTS = {
     "mindicador": "https://mindicador.cl/api/uf/2010",
     "spensiones": "https://www.spensiones.cl/apps/valoresCuotaFondo/vcfAFPxls.php?aaaaini=2025&aaaafin=2025&tf=A&fecconf=20251231",
     "cmf": dc.cmf.URL_INDICE,
+    "sii": "https://www.sii.cl/valores_y_fechas/uf/uf2024.htm",
 }
 
 
@@ -103,6 +106,19 @@ def _delinquency() -> pd.DataFrame:
     return df[["fecha", *dc.cmf.CARTERAS, "monto_moroso_mm"]].reset_index(drop=True)
 
 
+def _sii(code: str) -> Callable[[], pd.DataFrame]:
+    """UF or observed dollar from the SII's official yearly pages (datoschile.sii), the
+    same values as mindicador day by day; used when mindicador does not answer."""
+    def fetch() -> pd.DataFrame:
+        rows = []
+        for year in range(START_YEAR, pd.Timestamp.today().year + 1):
+            rows.extend(dc.sii.descargar_anio(code, year))
+        df = pd.DataFrame(rows)
+        df["fecha"] = pd.to_datetime(df["fecha"])
+        return df.drop_duplicates("fecha").sort_values("fecha").reset_index(drop=True)[["fecha", "valor"]]
+    return fetch
+
+
 def _bde(name: str) -> Callable[[], pd.DataFrame]:
     def fetch() -> pd.DataFrame:
         from pipeline import bcentral
@@ -111,8 +127,8 @@ def _bde(name: str) -> Callable[[], pd.DataFrame]:
 
 
 SOURCES = [
-    Source("uf", _uf, ("fecha",), "valor", ("mindicador",), _bde("uf")),
-    Source("dolar", _indicator("dolar"), ("fecha",), "valor", ("mindicador",), _bde("dolar")),
+    Source("uf", _uf, ("fecha",), "valor", ("mindicador",), _bde("uf"), _sii("uf")),
+    Source("dolar", _indicator("dolar"), ("fecha",), "valor", ("mindicador",), _bde("dolar"), _sii("dolar")),
     Source("cobre", _indicator("libra_cobre"), ("fecha",), "valor", ("mindicador",), _bde("cobre")),
     Source("ipc", _indicator("ipc"), ("fecha",), "valor", ("mindicador",), _bde("ipc")),
     Source("tpm", _indicator("tpm"), ("fecha",), "valor", ("mindicador",), _bde("tpm")),
@@ -165,10 +181,14 @@ def run(sources=SOURCES, raw: Path = RAW) -> pd.DataFrame:
                 new = fetch_with_retries(s)
             except ConnectionError:
                 from pipeline import bcentral
-                if s.fallback is None or bcentral.credentials() is None:
+                if s.official is not None and not down.get("sii"):
+                    new = s.official()
+                    entry["origen"] = "sii"
+                elif s.fallback is None or bcentral.credentials() is None:
                     raise
-                new = s.fallback()
-                entry["origen"] = "respaldo"
+                else:
+                    new = s.fallback()
+                    entry["origen"] = "respaldo"
             missing = set(s.key) | {s.value}
             missing -= set(new.columns)
             if missing:

@@ -74,4 +74,4 @@ pytest                           # no network: fake sources and a dbt build on a
 
 - The warehouse is DuckDB inside the runner, not a hosted warehouse. The dbt models are plain SQL, so moving them to BigQuery or Snowflake is a profile change plus the `asof join` in `mart_fondos`; that move needs a cloud account and was not done.
 - Revisions are only measured from the day the pipeline started running; nothing is known about revisions before that.
-- The series are the ones mindicador.cl, the Pension Superintendency and the CMF publish; there is no second source to cross-check against.
+- The series are the ones mindicador.cl, the Pension Superintendency and the CMF publish. When mindicador does not answer, the UF and the dollar come from the SII's official tables instead (`origen = sii` in the load log); the other mindicador series fall back to the Central Bank's BDE only if `BCCH_USER` and `BCCH_PASS` are set.

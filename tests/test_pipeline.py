@@ -150,3 +150,20 @@ def test_no_fallback_without_credentials(tmp_path, monkeypatch):
     monkeypatch.setattr(bcentral, "credentials", lambda: None)
     src = extract.Source("uf", lambda: None, ("fecha",), "valor", ("down",), lambda: 1 / 0)
     assert extract.run([src], raw=tmp_path)["estado"].iloc[0] == "fallo"
+
+
+def test_official_source_used_before_bde_and_without_credentials(tmp_path, monkeypatch):
+    from pipeline import bcentral
+    monkeypatch.setattr(bcentral, "credentials", lambda: None)
+    frame = pd.DataFrame({"fecha": pd.to_datetime(["2024-01-01"]), "valor": [37000.0]})
+    src = extract.Source("uf", lambda: None, ("fecha",), "valor", ("down",), lambda: 1 / 0, lambda: frame)
+    log = extract.run([src], raw=tmp_path)
+    assert log[["estado", "origen"]].iloc[0].tolist() == ["ok", "sii"]
+
+
+def test_sii_fetch_builds_a_dated_series(monkeypatch):
+    monkeypatch.setattr(extract.dc.sii, "descargar_anio",
+                        lambda code, year: [{"fecha": f"{year}-01-02", "valor": float(year)}])
+    df = extract._sii("uf")()
+    assert list(df.columns) == ["fecha", "valor"]
+    assert df["fecha"].is_monotonic_increasing and df["fecha"].dt.year.min() == extract.START_YEAR
