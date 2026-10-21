@@ -92,7 +92,11 @@ def _indicator(code: str) -> Callable[[], pd.DataFrame]:
 
 def _uf() -> pd.DataFrame:
     df = dc.indicadores.uf(desde=START_YEAR)
-    return df.rename(columns={df.columns[-1]: "valor"})[["fecha", "valor"]]
+    out = df.rename(columns={df.columns[-1]: "valor"})[["fecha", "valor"]]
+    # uf() leaves its cleaning report (lists of dates) in df.attrs; pyarrow writes attrs to
+    # the parquet metadata as JSON and fails on date objects. The report is not stored.
+    out.attrs = {}
+    return out
 
 
 def _pension_index() -> pd.DataFrame:

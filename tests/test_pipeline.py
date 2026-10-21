@@ -167,3 +167,13 @@ def test_sii_fetch_builds_a_dated_series(monkeypatch):
     df = extract._sii("uf")()
     assert list(df.columns) == ["fecha", "valor"]
     assert df["fecha"].is_monotonic_increasing and df["fecha"].dt.year.min() == extract.START_YEAR
+
+
+def test_uf_frame_with_date_report_writes_to_parquet(tmp_path, monkeypatch):
+    import datetime as dt
+    frame = pd.DataFrame({"fecha": pd.to_datetime(["2014-12-29"]), "uf": [24627.10]})
+    frame.attrs["informe"] = {"descartados": [dt.date(2014, 12, 29)], "interpolados": [], "duplicados": 0}
+    monkeypatch.setattr(extract.dc.indicadores, "uf", lambda desde: frame)
+    out = extract._uf()
+    out.to_parquet(tmp_path / "uf.parquet", index=False)
+    assert pd.read_parquet(tmp_path / "uf.parquet")["valor"].iloc[0] == 24627.10
