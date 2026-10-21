@@ -92,11 +92,7 @@ def _indicator(code: str) -> Callable[[], pd.DataFrame]:
 
 def _uf() -> pd.DataFrame:
     df = dc.indicadores.uf(desde=START_YEAR)
-    out = df.rename(columns={df.columns[-1]: "valor"})[["fecha", "valor"]]
-    # uf() leaves its cleaning report (lists of dates) in df.attrs; pyarrow writes attrs to
-    # the parquet metadata as JSON and fails on date objects. The report is not stored.
-    out.attrs = {}
-    return out
+    return df.rename(columns={df.columns[-1]: "valor"})[["fecha", "valor"]]
 
 
 def _pension_index() -> pd.DataFrame:
@@ -206,6 +202,10 @@ def run(sources=SOURCES, raw: Path = RAW) -> pd.DataFrame:
             if new.duplicated(list(s.key)).any():
                 raise ValueError("claves duplicadas en la extraccion")
             new = new.assign(_cargado_en=loaded_at)
+            # datoschile leaves reports with date objects in df.attrs (uf()'s cleaning report,
+            # serie()'s list of duplicated days); pyarrow writes attrs to the parquet metadata as
+            # JSON and fails on them. The reports are not stored.
+            new.attrs = {}
             n_rev = 0
             if path.exists():
                 rev = revisions(pd.read_parquet(path), new, s).assign(detectado_en=loaded_at)
